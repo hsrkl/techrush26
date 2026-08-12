@@ -69,16 +69,7 @@ export default function EvidenceLedger({
   ];
 
   return (
-    <div className="space-y-6">
-      <div className="space-y-1">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-[#78726A]">
-          Feature Evidence Analysis
-        </h3>
-        <h2 className="font-serif text-2xl text-[#2C2A29]">
-          Key Predictors
-        </h2>
-      </div>
-
+    <div className="space-y-4">
       <div className="space-y-4">
         {metrics.map((m) => (
           <div key={m.label} className="border-b border-[#E6E1D8] pb-3 space-y-1">
@@ -94,16 +85,7 @@ export default function EvidenceLedger({
           </div>
         ))}
       </div>
-
-      {/* Model Feature Note */}
-      <div className="pt-2">
-        <h4 className="text-xs font-semibold uppercase tracking-wider text-[#78726A] mb-2">
-          Model Feature Importance
-        </h4>
-        <p className="text-xs text-[#78726A] leading-relaxed">
-          The GNN provides learned embeddings from the user–merchant bipartite graph. The XGBoost classifier then uses these embeddings alongside raw transaction features (<span className="font-mono text-[#2C2A29]">amount</span>, <span className="font-mono text-[#2C2A29]">MCC</span>, <span className="font-mono text-[#2C2A29]">time</span>, <span className="font-mono text-[#2C2A29]">error signals</span>) for final fraud probability estimation.
-        </p>
-      </div>
     </div>
   );
 }
+

@@ -169,3 +169,53 @@ input[type='number'] {
   background: rgba(200, 90, 50, 0.15);
   color: var(--text-main);
 }
+
+/* Claude Aesthetic Card & Text Box Utilities */
+.claude-card {
+  background-color: #FAF8F5;
+  border: 1px solid var(--border-hairline);
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(44, 42, 41, 0.03);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.claude-card:hover {
+  border-color: #D8D2C7;
+}
+
+.claude-input-container {
+  background-color: #FAF8F5;
+  border: 1px solid var(--border-hairline);
+  border-radius: 6px;
+  padding: 8px 12px;
+  transition: all 0.2s ease;
+}
+
+.claude-input-container:focus-within {
+  border-color: var(--accent-terracotta);
+  box-shadow: 0 0 0 2px rgba(200, 90, 50, 0.1);
+  background-color: #FFFFFF;
+}
+
+.claude-input {
+  width: 100%;
+  background: transparent;
+  border: none !important;
+  outline: none !important;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-main);
+  padding: 2px 0;
+}
+
+.claude-input::placeholder {
+  color: var(--text-light);
+}
+
+.claude-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}

@@ -1,10 +1,7 @@
-import { useState } from 'react';
 import { motion } from 'framer-motion';
 import type { ChipType, ErrorType } from '../App';
 
 interface InputHubProps {
-  apiUrl: string;
-  setApiUrl: (s: string) => void;
   user: number;
   setUser: (n: number) => void;
   card: number;
@@ -29,7 +26,6 @@ interface InputHubProps {
   setErrors: (e: ErrorType) => void;
   onAudit: () => void;
   isLoading: boolean;
-  apiError: string | null;
 }
 
 const CHIP_OPTIONS: ChipType[] = ['Swipe Transaction', 'Chip Transaction', 'Online Transaction'];
@@ -41,11 +37,11 @@ const CHIP_SHORT: Record<ChipType, string> = {
 const ERROR_OPTIONS: ErrorType[] = ['No error', 'Bad CVV', 'Bad PIN', 'Insufficient Balance', 'Bad Expiration'];
 
 const MCC_PRESETS = [
-  { label: '5411 – Grocery', value: 5411 },
-  { label: '5999 – Misc Retail', value: 5999 },
-  { label: '5732 – Electronics', value: 5732 },
-  { label: '5812 – Restaurants', value: 5812 },
-  { label: '4111 – Transport', value: 4111 },
+  { label: '5411 Grocery', value: 5411 },
+  { label: '5999 Misc Retail', value: 5999 },
+  { label: '5732 Electronics', value: 5732 },
+  { label: '5812 Dining', value: 5812 },
+  { label: '4111 Transport', value: 4111 },
 ];
 
 const AMOUNT_PRESETS = [
@@ -55,9 +51,28 @@ const AMOUNT_PRESETS = [
   { label: '$2K', value: '$2000.00' },
 ];
 
+const TIME_PRESETS = [
+  { label: 'Morning (09:15)', value: '09:15' },
+  { label: 'Afternoon (14:30)', value: '14:30' },
+  { label: 'Evening (20:00)', value: '20:00' },
+  { label: 'Late Night (03:17)', value: '03:17' },
+];
+
+// Time conversion helpers
+function timeToMinutes(timeStr: string): number {
+  if (!timeStr || !timeStr.includes(':')) return 822; // default 13:42
+  const [h, m] = timeStr.split(':').map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
+function minutesToTime(mins: number): string {
+  const clamped = Math.max(0, Math.min(1439, mins));
+  const h = Math.floor(clamped / 60);
+  const m = clamped % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
 export default function InputHub({
-  apiUrl,
-  setApiUrl,
   user,
   setUser,
   card,
@@ -82,369 +97,290 @@ export default function InputHub({
   setErrors,
   onAudit,
   isLoading,
-  apiError,
 }: InputHubProps) {
-  const [urlFocused, setUrlFocused] = useState(false);
+  const currentMinutes = timeToMinutes(time);
 
   return (
-    <div className="space-y-10">
-      {/* ── 00. API Endpoint ──────────────────────────────── */}
-      <div className="space-y-3">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-[#78726A]">
-          00. API Endpoint
-        </h3>
-        <p className="text-xs text-[#A0988E] leading-relaxed">
-          Enter the base ngrok URL (or any URL) where the GNN + XGBoost fraud detection model is hosted.
-        </p>
+    <div className="space-y-6">
+      {/* ── Transaction Input Grid ────────────────────────── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
-        <div className={`flex items-baseline border-b pb-2 transition-colors ${
-          urlFocused ? 'border-[#C85A32]' : 'border-[#E6E1D8]'
-        }`}>
-          <span className="font-mono text-sm text-[#78726A] mr-2 flex-shrink-0">URL</span>
-          <input
-            type="text"
-            value={apiUrl}
-            onChange={(e) => setApiUrl(e.target.value)}
-            onFocus={() => setUrlFocused(true)}
-            onBlur={() => setUrlFocused(false)}
-            placeholder="https://your-ngrok-url.ngrok-free.app"
-            className="w-full bg-transparent font-mono text-sm text-[#2C2A29] outline-none border-none p-0 focus:ring-0"
-            style={{ borderBottom: 'none' }}
-          />
-        </div>
-
-        {apiError && (
-          <div className="text-xs font-mono text-[#B84A39] mt-1">
-            ⚠ {apiError}
-          </div>
-        )}
-      </div>
-
-      {/* ── 01. Transaction Method ────────────────────────── */}
-      <div className="space-y-3">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-[#78726A]">
-          01. Transaction Method
-        </h3>
-
-        <div className="flex items-center gap-1 border-b border-[#E6E1D8] pb-3">
-          {CHIP_OPTIONS.map((opt) => {
-            const active = useChip === opt;
-            return (
-              <button
-                key={opt}
-                onClick={() => setUseChip(opt)}
-                className={`
-                  relative px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer border-none bg-transparent
-                  ${active ? 'text-[#C85A32]' : 'text-[#78726A] hover:text-[#2C2A29]'}
-                `}
-              >
-                <span>{CHIP_SHORT[opt]}</span>
-                {active && (
-                  <motion.div
-                    layoutId="chip-type-line"
-                    className="absolute bottom-[-13px] left-0 right-0 h-[2px] bg-[#C85A32]"
-                    transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-                  />
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* ── 02. Transaction Amount ────────────────────────── */}
-      <div className="space-y-3">
-        <div className="flex justify-between items-baseline">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-[#78726A]">
-            02. Transaction Amount
-          </h3>
-          <div className="flex items-center gap-3">
-            {AMOUNT_PRESETS.map((p) => (
-              <button
-                key={p.label}
-                onClick={() => setAmount(p.value)}
-                className={`
-                  text-xs font-mono transition-colors cursor-pointer border-none bg-transparent p-0
-                  ${amount === p.value ? 'text-[#C85A32] font-semibold underline' : 'text-[#78726A] hover:text-[#2C2A29]'}
-                `}
-              >
-                {p.label}
-              </button>
-            ))}
+        {/* ── 01. Transaction Method ────────────────────────── */}
+        <div className="claude-card p-5 space-y-3">
+          <label className="claude-label">01. Transaction Method</label>
+          <div className="grid grid-cols-3 gap-2 pt-1">
+            {CHIP_OPTIONS.map((opt) => {
+              const active = useChip === opt;
+              return (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => setUseChip(opt)}
+                  className={`
+                    py-2 px-2 text-xs font-mono rounded-md border text-center transition-all cursor-pointer
+                    ${active
+                      ? 'border-[#C85A32] bg-[#FAF0EC] text-[#C85A32] font-semibold shadow-xs'
+                      : 'border-[#E6E1D8] bg-[#FAF8F5] text-[#78726A] hover:border-[#D8D2C7]'}
+                  `}
+                >
+                  {CHIP_SHORT[opt]}
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        <div className="flex items-baseline border-b border-[#E6E1D8] pb-2">
-          <span className="font-serif text-3xl text-[#78726A] mr-2">$</span>
-          <input
-            type="text"
-            value={amount.replace(/^\$/, '')}
-            onChange={(e) => setAmount(`$${e.target.value}`)}
-            placeholder="0.00"
-            className="w-full bg-transparent font-serif text-3xl font-semibold text-[#2C2A29] outline-none border-none p-0 focus:ring-0"
-            style={{ borderBottom: 'none' }}
-          />
-        </div>
-      </div>
-
-      {/* ── 03. Customer Identity ─────────────────────────── */}
-      <div className="space-y-3">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-[#78726A]">
-          03. Customer Identity
-        </h3>
-
-        <div className="grid grid-cols-2 gap-6">
-          {/* User ID */}
-          <div className="space-y-2">
-            <div className="flex justify-between items-baseline text-xs">
-              <span className="text-[#78726A] font-medium tracking-wide uppercase text-[10px]">User ID</span>
-              <span className="font-mono text-[#2C2A29]">{user}</span>
+        {/* ── 02. Transaction Amount ────────────────────────── */}
+        <div className="claude-card p-5 space-y-3">
+          <div className="flex justify-between items-center">
+            <label className="claude-label">02. Transaction Amount</label>
+            <div className="flex items-center gap-2">
+              {AMOUNT_PRESETS.map((p) => (
+                <button
+                  key={p.label}
+                  type="button"
+                  onClick={() => setAmount(p.value)}
+                  className={`
+                    text-[11px] font-mono px-1.5 py-0.5 rounded cursor-pointer border-none bg-transparent transition-colors
+                    ${amount === p.value ? 'text-[#C85A32] font-semibold underline' : 'text-[#78726A] hover:text-[#2C2A29]'}
+                  `}
+                >
+                  {p.label}
+                </button>
+              ))}
             </div>
+          </div>
+
+          <div className="claude-input-container flex items-center">
+            <span className="font-serif text-lg text-[#78726A] mr-1.5">$</span>
+            <input
+              type="text"
+              value={amount.replace(/^\$/, '')}
+              onChange={(e) => setAmount(`$${e.target.value}`)}
+              placeholder="0.00"
+              className="claude-input font-serif text-lg font-semibold"
+            />
+          </div>
+        </div>
+
+        {/* ── 03. Customer & Card Vector ────────────────────── */}
+        <div className="claude-card p-5 space-y-4">
+          <label className="claude-label">03. Customer & Card Vector</label>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <span className="text-[10px] font-mono uppercase text-[#78726A]">User ID</span>
+              <div className="claude-input-container">
+                <input
+                  type="number"
+                  min={0}
+                  value={user}
+                  onChange={(e) => setUser(Number(e.target.value) || 0)}
+                  className="claude-input"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <span className="text-[10px] font-mono uppercase text-[#78726A]">Card Index</span>
+              <div className="claude-input-container">
+                <input
+                  type="number"
+                  min={0}
+                  max={9}
+                  value={card}
+                  onChange={(e) => setCard(Number(e.target.value) || 0)}
+                  className="claude-input"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── 04. Date Vector (Year, Month, Day) ────────────── */}
+        <div className="claude-card p-5 space-y-4">
+          <label className="claude-label">04. Date Vector</label>
+
+          <div className="grid grid-cols-3 gap-2">
+            <div className="space-y-1">
+              <span className="text-[10px] font-mono uppercase text-[#78726A]">Year</span>
+              <div className="claude-input-container">
+                <input
+                  type="number"
+                  value={year}
+                  onChange={(e) => setYear(Number(e.target.value) || 2024)}
+                  className="claude-input"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <span className="text-[10px] font-mono uppercase text-[#78726A]">Month</span>
+              <div className="claude-input-container">
+                <input
+                  type="number"
+                  min={1}
+                  max={12}
+                  value={month}
+                  onChange={(e) => setMonth(Number(e.target.value) || 1)}
+                  className="claude-input"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <span className="text-[10px] font-mono uppercase text-[#78726A]">Day</span>
+              <div className="claude-input-container">
+                <input
+                  type="number"
+                  min={1}
+                  max={31}
+                  value={day}
+                  onChange={(e) => setDay(Number(e.target.value) || 1)}
+                  className="claude-input"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── 05. Time Slider (HH:MM Vector) ────────────────── */}
+        <div className="claude-card p-5 space-y-4 md:col-span-2">
+          <div className="flex justify-between items-baseline">
+            <label className="claude-label">05. Time Vector Slider (24-Hour)</label>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-mono text-[#78726A]">Selected Time:</span>
+              <span className="font-mono text-base font-bold text-[#C85A32] bg-[#FAF0EC] px-2.5 py-0.5 rounded border border-[#F3D7CD]">
+                {time || '00:00'} HRS
+              </span>
+            </div>
+          </div>
+
+          <div className="space-y-3 pt-1">
             <input
               type="range"
               min={0}
-              max={2000}
+              max={1439}
               step={1}
-              value={Math.min(2000, user)}
-              onChange={(e) => setUser(Number(e.target.value))}
+              value={currentMinutes}
+              onChange={(e) => setTime(minutesToTime(Number(e.target.value)))}
               className="w-full"
             />
-            <input
-              type="number"
-              min={0}
-              value={user}
-              onChange={(e) => setUser(Number(e.target.value) || 0)}
-              className="w-full"
-              style={{ borderBottom: 'none' }}
-            />
-          </div>
 
-          {/* Card Index */}
-          <div className="space-y-2">
-            <div className="flex justify-between items-baseline text-xs">
-              <span className="text-[#78726A] font-medium tracking-wide uppercase text-[10px]">Card Index</span>
-              <span className="font-mono text-[#2C2A29]">{card}</span>
+            {/* Time labels below slider */}
+            <div className="flex justify-between text-[11px] font-mono text-[#78726A]">
+              <span>00:00 (Midnight)</span>
+              <span>06:00 (Morning)</span>
+              <span>12:00 (Noon)</span>
+              <span>18:00 (Evening)</span>
+              <span>23:59 (Night)</span>
             </div>
-            <input
-              type="range"
-              min={0}
-              max={9}
-              step={1}
-              value={card}
-              onChange={(e) => setCard(Number(e.target.value))}
-              className="w-full"
-            />
-            <input
-              type="number"
-              min={0}
-              max={9}
-              value={card}
-              onChange={(e) => setCard(Number(e.target.value) || 0)}
-              className="w-full"
-              style={{ borderBottom: 'none' }}
-            />
-          </div>
-        </div>
-      </div>
 
-      {/* ── 04. Date & Time Vector ────────────────────────── */}
-      <div className="space-y-3">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-[#78726A]">
-          04. Date & Time Vector
-        </h3>
-
-        <div className="grid grid-cols-3 gap-6">
-          {/* Year */}
-          <div className="space-y-1">
-            <span className="text-[10px] text-[#78726A] font-medium tracking-wide uppercase">Year</span>
-            <input
-              type="number"
-              value={year}
-              onChange={(e) => setYear(Number(e.target.value) || 2024)}
-              className="w-full"
-              style={{ borderBottom: 'none' }}
-            />
-          </div>
-
-          {/* Month */}
-          <div className="space-y-1">
-            <div className="flex justify-between items-baseline">
-              <span className="text-[10px] text-[#78726A] font-medium tracking-wide uppercase">Month</span>
-              <span className="font-mono text-xs text-[#2C2A29]">{month}</span>
+            {/* Quick time preset buttons */}
+            <div className="flex flex-wrap gap-2 pt-1 items-center">
+              <span className="text-[10px] font-mono uppercase text-[#78726A]">Quick Times:</span>
+              {TIME_PRESETS.map((tp) => (
+                <button
+                  key={tp.label}
+                  type="button"
+                  onClick={() => setTime(tp.value)}
+                  className={`
+                    text-[10px] font-mono px-2 py-0.5 rounded cursor-pointer border transition-colors
+                    ${time === tp.value
+                      ? 'border-[#C85A32] text-[#C85A32] bg-[#FAF0EC] font-semibold'
+                      : 'border-[#E6E1D8] text-[#78726A] hover:border-[#D8D2C7] bg-[#FAF8F5]'}
+                  `}
+                >
+                  {tp.label}
+                </button>
+              ))}
             </div>
-            <input
-              type="range"
-              min={1}
-              max={12}
-              step={1}
-              value={month}
-              onChange={(e) => setMonth(Number(e.target.value))}
-              className="w-full"
-            />
-            <input
-              type="number"
-              min={1}
-              max={12}
-              value={month}
-              onChange={(e) => setMonth(Number(e.target.value) || 1)}
-              className="w-full"
-              style={{ borderBottom: 'none' }}
-            />
           </div>
+        </div>
 
-          {/* Day */}
-          <div className="space-y-1">
-            <div className="flex justify-between items-baseline">
-              <span className="text-[10px] text-[#78726A] font-medium tracking-wide uppercase">Day</span>
-              <span className="font-mono text-xs text-[#2C2A29]">{day}</span>
+        {/* ── 06. Merchant Details ──────────────────────────── */}
+        <div className="claude-card p-5 space-y-4 md:col-span-2">
+          <label className="claude-label">06. Merchant Identifiers & MCC Code</label>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <span className="text-[10px] font-mono uppercase text-[#78726A]">Merchant Name (ID)</span>
+              <div className="claude-input-container">
+                <input
+                  type="text"
+                  value={merchantName}
+                  onChange={(e) => setMerchantName(e.target.value)}
+                  placeholder="3527213246127876916"
+                  className="claude-input"
+                />
+              </div>
             </div>
-            <input
-              type="range"
-              min={1}
-              max={31}
-              step={1}
-              value={day}
-              onChange={(e) => setDay(Number(e.target.value))}
-              className="w-full"
-            />
-            <input
-              type="number"
-              min={1}
-              max={31}
-              value={day}
-              onChange={(e) => setDay(Number(e.target.value) || 1)}
-              className="w-full"
-              style={{ borderBottom: 'none' }}
-            />
+
+            <div className="space-y-1.5">
+              <span className="text-[10px] font-mono uppercase text-[#78726A]">MCC Code</span>
+              <div className="claude-input-container">
+                <input
+                  type="number"
+                  value={mcc}
+                  onChange={(e) => setMcc(Number(e.target.value) || 0)}
+                  className="claude-input"
+                />
+              </div>
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {MCC_PRESETS.map((p) => (
+                  <button
+                    key={p.value}
+                    type="button"
+                    onClick={() => setMcc(p.value)}
+                    className={`
+                      text-[10px] font-mono px-2 py-0.5 rounded cursor-pointer border transition-colors
+                      ${mcc === p.value
+                        ? 'border-[#C85A32] text-[#C85A32] bg-[#FAF0EC]'
+                        : 'border-[#E6E1D8] text-[#78726A] hover:border-[#D8D2C7] bg-[#FAF8F5]'}
+                    `}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Time */}
-        <div className="space-y-1 pt-2">
-          <div className="flex justify-between items-baseline text-xs">
-            <span className="text-[#78726A] font-medium tracking-wide uppercase text-[10px]">
-              Time (HH:MM)
-            </span>
-          </div>
-          <input
-            type="time"
-            value={time}
-            onChange={(e) => setTime(e.target.value)}
-            className="w-full bg-transparent font-mono text-base text-[#2C2A29] outline-none border-b border-[#E6E1D8] focus:border-[#C85A32] p-1 transition-colors"
-            style={{ borderTop: 'none', borderLeft: 'none', borderRight: 'none', borderRadius: 0 }}
-          />
-        </div>
       </div>
 
-      {/* ── 05. Merchant Details ──────────────────────────── */}
-      <div className="space-y-3">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-[#78726A]">
-          05. Merchant Details
-        </h3>
-
-        {/* Merchant Name (ID) */}
-        <div className="space-y-1">
-          <span className="text-[10px] text-[#78726A] font-medium tracking-wide uppercase">
-            Merchant Name (ID)
-          </span>
-          <input
-            type="text"
-            value={merchantName}
-            onChange={(e) => setMerchantName(e.target.value)}
-            placeholder="Large integer merchant identifier"
-            className="w-full"
-            style={{ borderBottom: 'none' }}
-          />
-        </div>
-
-        {/* MCC Code */}
-        <div className="space-y-2 pt-2">
-          <div className="flex justify-between items-baseline text-xs">
-            <span className="text-[#78726A] font-medium tracking-wide uppercase text-[10px]">
-              MCC Code
-            </span>
-            <span className="font-mono text-[#2C2A29]">{mcc}</span>
-          </div>
-          <input
-            type="number"
-            value={mcc}
-            onChange={(e) => setMcc(Number(e.target.value) || 0)}
-            className="w-full"
-            style={{ borderBottom: 'none' }}
-          />
-          <div className="flex flex-wrap gap-2 pt-1">
-            {MCC_PRESETS.map((p) => (
-              <button
-                key={p.value}
-                onClick={() => setMcc(p.value)}
-                className={`
-                  text-[10px] font-mono px-2 py-0.5 rounded transition-colors cursor-pointer border
-                  ${mcc === p.value
-                    ? 'border-[#C85A32] text-[#C85A32] bg-[#FAF0EC]'
-                    : 'border-[#E6E1D8] text-[#78726A] hover:border-[#C85A32] bg-transparent'}
-                `}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* ── 06. Error Signals ─────────────────────────────── */}
-      <div className="space-y-3">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-[#78726A]">
-          06. Error Signals
-        </h3>
-
-        <div className="flex flex-wrap gap-2">
-          {ERROR_OPTIONS.map((opt) => {
-            const active = errors === opt;
-            const isError = opt !== 'No error';
-            return (
-              <button
-                key={opt}
-                onClick={() => setErrors(opt)}
-                className={`
-                  text-xs font-mono px-3 py-1.5 rounded transition-all cursor-pointer border
-                  ${active
-                    ? isError
-                      ? 'border-[#B84A39] text-[#B84A39] bg-[#FBF0EF] font-semibold'
-                      : 'border-[#3B7A57] text-[#3B7A57] bg-[#EBF3EE] font-semibold'
-                    : 'border-[#E6E1D8] text-[#78726A] hover:border-[#A0988E] bg-transparent'}
-                `}
-              >
-                {opt}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* ── Submit Button ─────────────────────────────────── */}
-      <div className="pt-4">
+      {/* ── Primary Action Button ──────────────────────────── */}
+      <div className="pt-2">
         <button
+          type="button"
           onClick={onAudit}
           disabled={isLoading}
           className="
-            w-full py-3.5 px-6 rounded-md bg-[#C85A32] hover:bg-[#B24E2A] text-white
-            font-medium text-sm tracking-wide transition-all cursor-pointer border-none
-            disabled:opacity-50 disabled:cursor-not-allowed shadow-sm
+            w-full py-4 px-8 rounded-lg bg-[#C85A32] hover:bg-[#B24E2A] text-white
+            font-medium text-base tracking-wide transition-all cursor-pointer border-none
+            disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg
+            flex items-center justify-center gap-3
           "
         >
           {isLoading ? (
-            <span className="flex items-center justify-center gap-2">
-              <svg className="animate-spin h-4 w-4 text-white" viewBox="0 0 24 24" fill="none">
+            <>
+              <svg className="animate-spin h-5 w-5 text-white" viewBox="0 0 24 24" fill="none">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
               </svg>
-              Evaluating Model Inference...
-            </span>
+              <span>Running GNN + XGBoost Model Inference...</span>
+            </>
           ) : (
-            'Run Fraud Detection Inference'
+            <>
+              <span>Evaluate Transaction & Calculate Fraud Score</span>
+              <span className="font-mono text-xs opacity-80">→</span>
+            </>
           )}
         </button>
       </div>
     </div>
   );
 }
+
+
+

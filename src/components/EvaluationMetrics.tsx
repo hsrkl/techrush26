@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   AreaChart,
@@ -38,34 +37,7 @@ const PR_CURVE_DATA = [
   { recall: 1.0, precision: 0.25 },
 ];
 
-// Feature importance weights
-const FEATURE_IMPORTANCE_DATA = [
-  { feature: 'errorBalanceOrig', importance: '48.5%' },
-  { feature: 'amount', importance: '22.4%' },
-  { feature: 'oldbalanceOrg', importance: '14.2%' },
-  { feature: 'type_CASH_OUT', importance: '8.6%' },
-  { feature: 'type_TRANSFER', importance: '4.3%' },
-  { feature: 'hour (temporal)', importance: '2.0%' },
-];
-
 export default function EvaluationMetrics() {
-  const [threshold, setThreshold] = useState(0.25);
-
-  const calcSimulatedMetrics = (t: number) => {
-    const recall = Math.min(0.995, Math.max(0.75, 0.9412 + (0.5 - t) * 0.25));
-    const precision = Math.min(0.992, Math.max(0.70, 0.9645 - (0.5 - t) * 0.35));
-    const f1 = (2 * precision * recall) / (precision + recall);
-    return {
-      precision: (precision * 100).toFixed(2),
-      recall: (recall * 100).toFixed(2),
-      f1: (f1 * 100).toFixed(2),
-      estFalseAlarms: Math.round(285 * (1 + (0.5 - t) * 1.8)),
-      estMissedFraud: Math.round(483 * (1 - (0.5 - t) * 1.2)),
-    };
-  };
-
-  const sim = calcSimulatedMetrics(threshold);
-
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -135,7 +107,7 @@ export default function EvaluationMetrics() {
       </div>
 
       {/* ROC & PR Curve Visuals */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 border-b border-[#E6E1D8] pb-12">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
         {/* ROC Curve */}
         <div className="space-y-4">
           <div className="space-y-1">
@@ -184,59 +156,7 @@ export default function EvaluationMetrics() {
           </div>
         </div>
       </div>
-
-      {/* Threshold Simulator & Confusion Matrix */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start">
-        {/* Simulator */}
-        <div className="lg:col-span-6 space-y-4">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-[#78726A]">
-            Classification Threshold Simulator
-          </h3>
-          <p className="text-xs text-[#78726A] leading-relaxed">
-            Adjust decision boundary threshold ({threshold.toFixed(2)}) to observe precision vs. recall trade-offs:
-          </p>
-          <input
-            type="range"
-            min={0.1}
-            max={0.9}
-            step={0.01}
-            value={threshold}
-            onChange={(e) => setThreshold(Number(e.target.value))}
-            className="w-full"
-          />
-
-          <div className="grid grid-cols-3 gap-4 pt-2 font-mono text-xs">
-            <div>
-              <div className="text-[10px] text-[#78726A]">PRECISION</div>
-              <div className="text-base text-[#3B7A57] font-semibold">{sim.precision}%</div>
-            </div>
-            <div>
-              <div className="text-[10px] text-[#78726A]">RECALL</div>
-              <div className="text-base text-[#C85A32] font-semibold">{sim.recall}%</div>
-            </div>
-            <div>
-              <div className="text-[10px] text-[#78726A]">F1-SCORE</div>
-              <div className="text-base text-[#2C2A29] font-semibold">{sim.f1}%</div>
-            </div>
-          </div>
-        </div>
-
-        {/* Feature Importance Table */}
-        <div className="lg:col-span-6 space-y-4">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-[#78726A]">
-            Feature Importance Gain
-          </h3>
-
-          <div className="space-y-2 font-mono text-xs">
-            {FEATURE_IMPORTANCE_DATA.map((f) => (
-              <div key={f.feature} className="flex justify-between items-center border-b border-[#EDE9E1] pb-1.5">
-                <span className="text-[#78726A]">{f.feature}</span>
-                <span className="text-[#2C2A29] font-medium">{f.importance}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
     </motion.div>
   );
 }
+

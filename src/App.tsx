@@ -2,7 +2,6 @@ import { useState, useCallback } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import Header, { PageTab } from './components/Header';
 import InputPage from './components/InputPage';
-import ResultsPage from './components/ResultsPage';
 import EvaluationMetrics from './components/EvaluationMetrics';
 
 export type ChipType = 'Swipe Transaction' | 'Chip Transaction' | 'Online Transaction';
@@ -19,13 +18,15 @@ export interface ApiResult {
 }
 
 export default function App() {
-  // Page Navigation state
-  const [activeTab, setActiveTab] = useState<PageTab>('input');
+  // Navigation state: 'audit' (unified inputs + results on 1 page) or 'metrics'
+  const [activeTab, setActiveTab] = useState<PageTab>('audit');
 
-  // API configuration
+  // API configuration & Connection Health
   const [apiUrl, setApiUrl] = useState('');
+  const [apiConnected, setApiConnected] = useState<boolean | null>(null);
+  const [isTestingConnection, setIsTestingConnection] = useState(false);
 
-  // Transaction parameters — matches main.py payload
+  // Transaction parameters — matches main.py backend payload schema
   const [user, setUser] = useState(876);
   const [card, setCard] = useState(1);
   const [year, setYear] = useState(2024);
@@ -38,25 +39,56 @@ export default function App() {
   const [useChip, setUseChip] = useState<ChipType>('Online Transaction');
   const [errors, setErrors] = useState<ErrorType>('Bad CVV');
 
-  // Audit state
+  // Audit State
   const [status, setStatus] = useState<AuditStatus>('idle');
   const [isLoading, setIsLoading] = useState(false);
   const [hasAuditResult, setHasAuditResult] = useState(false);
   const [apiResult, setApiResult] = useState<ApiResult | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [isFallback, setIsFallback] = useState(false);
 
-  const performAudit = useCallback(async () => {
+  // Health check endpoint helper
+  const testConnection = useCallback(async () => {
     if (!apiUrl.trim()) {
-      setApiError('Please enter an API URL first.');
+      setApiError('Please enter a valid Google Colab ngrok URL.');
+      setApiConnected(false);
       return;
     }
 
+    setIsTestingConnection(true);
+    setApiError(null);
+
+    try {
+      const baseUrl = apiUrl.replace(/\/+$/, '');
+      const response = await fetch(`${baseUrl}/health`, {
+        method: 'GET',
+        headers: {
+          'ngrok-skip-browser-warning': 'true',
+          'Bypass-Tunnel-Reminder': 'true',
+        },
+      });
+
+      if (response.ok) {
+        setApiConnected(true);
+        setApiError(null);
+      } else {
+        setApiConnected(false);
+        setApiError(`Health check returned status HTTP ${response.status}`);
+      }
+    } catch (err) {
+      setApiConnected(false);
+      setApiError(err instanceof Error ? err.message : 'Unable to connect to Colab API');
+    } finally {
+      setIsTestingConnection(false);
+    }
+  }, [apiUrl]);
+
+  // Main Audit Prediction Dispatcher
+  const performAudit = useCallback(async () => {
     setIsLoading(true);
     setStatus('loading');
     setApiError(null);
-
-    // Artificial delay to prevent a flashing blank screen
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    setIsFallback(false);
 
     const payload = {
       User: Number(user),
@@ -73,42 +105,51 @@ export default function App() {
     };
 
     try {
+      if (!apiUrl.trim()) {
+        throw new Error('No API URL provided. Enter your Google Colab ngrok URL to perform live inference.');
+      }
+
       const baseUrl = apiUrl.replace(/\/+$/, '');
       const response = await fetch(`${baseUrl}/predict`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'ngrok-skip-browser-warning': 'true',
+          'Bypass-Tunnel-Reminder': 'true',
         },
         body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        throw new Error(`API HTTP ${response.status}: ${response.statusText}`);
       }
 
       const data = await response.json();
-      console.log('Prediction backend response:', data);
+      console.log('Prediction response from Colab backend:', data);
 
-      const CLASSIFIER_THRESHOLD = 0.25;
-      const thresholdVal = CLASSIFIER_THRESHOLD;
+      const CLASSIFIER_THRESHOLD = data.threshold ?? 0.25;
       const isFraudResult = data.probability !== undefined ? data.probability >= CLASSIFIER_THRESHOLD : Boolean(data.is_fraud);
 
       const result: ApiResult = {
-        probability: data.probability,
+        probability: data.probability ?? (isFraudResult ? 0.88 : 0.05),
         is_fraud: isFraudResult,
-        threshold: thresholdVal,
-        customer_known: data.customer_known,
-        merchant_known: data.merchant_known,
+        threshold: CLASSIFIER_THRESHOLD,
+        customer_known: data.customer_known ?? true,
+        merchant_known: data.merchant_known ?? true,
       };
 
       setApiResult(result);
       setStatus(isFraudResult ? 'fraud' : 'safe');
+      setApiConnected(true);
+      setIsFallback(false);
     } catch (error) {
-      console.error('Failed to get prediction from backend:', error);
-      setApiError(error instanceof Error ? error.message : 'Unknown error');
+      console.error('API call failed:', error);
+      const errMsg = error instanceof Error ? error.message : 'Unknown error';
+      setApiError(errMsg);
+      setApiConnected(false);
+      setIsFallback(true);
 
-      // Fallback heuristic for demo purposes
+      // Heuristic calculation for fallback demonstration
       const amountNum = parseFloat(amount.replace(/[^0-9.]/g, '')) || 0;
       const isHighRisk =
         amountNum > 500 ||
@@ -129,46 +170,32 @@ export default function App() {
     } finally {
       setIsLoading(false);
       setHasAuditResult(true);
-      setActiveTab('results');
+
+      // Smooth scroll to the results section below
+      setTimeout(() => {
+        window.scrollTo({
+          top: 600,
+          behavior: 'smooth',
+        });
+      }, 100);
     }
   }, [apiUrl, user, card, year, month, day, time, amount, merchantName, mcc, useChip, errors]);
 
   return (
     <div className="min-h-screen bg-[#F7F4EE] text-[#2C2A29]">
-      {/* Top Navigation Header */}
+      {/* Navigation Header */}
       <Header
         activeTab={activeTab}
         onSelectTab={setActiveTab}
         hasResult={hasAuditResult}
       />
 
-      {/* Loading overlay */}
-      {isLoading && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 50,
-          background: 'rgba(247, 244, 238, 0.95)',
-          backdropFilter: 'blur(6px)',
-          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-          gap: '16px',
-        }}>
-          <div className="flex items-center gap-3">
-            <svg className="animate-spin h-5 w-5 text-[#C85A32]" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-            </svg>
-            <span className="font-mono text-xs text-[#2C2A29] tracking-wider uppercase">
-              Evaluating Model Inference...
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* Main Content View */}
+      {/* Main View Container */}
       <main className="pt-20 px-4 sm:px-6 relative z-10">
         <AnimatePresence mode="wait">
-          {activeTab === 'input' && (
+          {activeTab === 'audit' && (
             <InputPage
-              key="input-page"
+              key="audit-page"
               apiUrl={apiUrl}
               setApiUrl={setApiUrl}
               user={user}
@@ -196,20 +223,13 @@ export default function App() {
               onAudit={performAudit}
               isLoading={isLoading}
               apiError={apiError}
-            />
-          )}
-
-          {activeTab === 'results' && (
-            <ResultsPage
-              key="results-page"
+              apiConnected={apiConnected}
+              onTestConnection={testConnection}
+              isTestingConnection={isTestingConnection}
               status={status}
               apiResult={apiResult}
-              amount={amount}
-              useChip={useChip}
-              errors={errors}
-              time={time}
-              apiError={apiError}
-              onReAudit={() => setActiveTab('input')}
+              isFallback={isFallback}
+              hasResult={hasAuditResult}
             />
           )}
 
@@ -221,3 +241,4 @@ export default function App() {
     </div>
   );
 }
+
